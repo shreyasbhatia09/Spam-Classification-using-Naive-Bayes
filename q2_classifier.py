@@ -89,6 +89,8 @@ if __name__ == "__main__":
     testfile = open(test_data, 'r')
     correct = 0
     wrong = 0
+    # let us test!
+    # to do- laplacian blending
     for items in testfile:
         items = items.split(' ')
         email_id = items[0]
