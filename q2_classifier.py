@@ -29,8 +29,7 @@ class NaiveBayes:
             data = line.split(' ')
             # spam or ham
             res = data[1]
-            # get email id
-            email = data[1]
+
             for items in range(2, len(data), 2):
                 total += 1
                 if res == "spam":
@@ -41,26 +40,36 @@ class NaiveBayes:
         self.pSpam *= float(spam) / total
         self.pNotSpam = 1 - self.pSpam
 
+
     def conditional_word_prob(self, word, count, spam):
+        ## taking logarithms values so that too small probabilities can't be neglected due to overflow
+        ## P(W="abc"/S="Spam")^count is written as count*log(P(W="abc"/S="Spam"))
         if spam:
             if word in self.spam_word_dict:
-                return float(self.spam_word_dict[word] / float(sum(self.spam_word_dict.itervalues()))) ** count
+                return np.log10(float(self.spam_word_dict[word]) / float(sum(self.spam_word_dict.itervalues()))) * count
             else:
-                return float(self.ham_word_dict[word] / float(sum((self.ham_word_dict.itervalues())))) ** count
+                return np.log10(1 / float(sum(self.spam_word_dict.itervalues())))   ##laplace blending, when complete new word is found
+        else:
+            if word in self.ham_word_dict:
+                return np.log10(float(self.ham_word_dict[word]) / float(sum(self.ham_word_dict.itervalues()))) * count
+            else:
+                return np.log10(1 / float(sum(self.ham_word_dict.itervalues())))    ##laplace blending, when complete new word is found
 
     def conditional_prob(self, email, is_spam):
-        result = 1.0
+        result = 0
 
         for i in range(0,len(email), 2):
             item = email[i]
             count = int(email[i + 1])
 
-            result = result * self.conditional_word_prob(item, count, is_spam)
+            #Since conditional prob are in log, so we should add rather than multiply
+            result = result + self.conditional_word_prob(item, count, is_spam)
         return result
 
     def classify(self, email):
-        isSpam = self.pSpam * self.conditional_prob(email, True)
-        notSpam = self.pNotSpam * self.conditional_prob(email, False)
+        #Due to probabilities in logarithms, prob. of spam or ham is also taken in logarithms form
+        isSpam = np.log10(self.pSpam) + self.conditional_prob(email, True)
+        notSpam = np.log10(self.pNotSpam) + self.conditional_prob(email, False)
         return isSpam > notSpam
 
 
@@ -79,7 +88,7 @@ if __name__ == "__main__":
     optparser.add_option('-o', '--output', dest="output", help="output file")
 
     (options, args) = optparser.parse_args()
-
+    print options, args
     train_data = options.traindata
     test_data = options.testdata
     output = options.output
