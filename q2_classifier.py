@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import sys
+import csv
 from collections import Counter
 
 __author__ = 'Shreyas Bhatia'
@@ -17,6 +18,9 @@ class NaiveBayes:
         self.spam_word_dict = Counter()
         self.pSpam = 1.0
         self.pNotSpam = 1.0
+        self.total_spam_words = 0.0
+        self.total_ham_words = 0.0
+        self.alpha = 0.1
         self.train()
 
     def train(self):
@@ -37,33 +41,39 @@ class NaiveBayes:
                     self.spam_word_dict[data[items]] += int(data[items + 1])
                 else:
                     self.ham_word_dict[data[items]] += int(data[items + 1])
-        self.pSpam *= float(spam) / total
+                    
+        self.total_spam_words += float(sum(self.spam_word_dict.itervalues()))
+        self.total_ham_words += float(sum(self.ham_word_dict.itervalues()))
+        self.pSpam = float(float(spam) / float(total))
         self.pNotSpam = 1 - self.pSpam
-
 
     def conditional_word_prob(self, word, count, spam):
         ## taking logarithms values so that too small probabilities can't be neglected due to overflow
         ## P(W="abc"/S="Spam")^count is written as count*log(P(W="abc"/S="Spam"))
         if spam:
             if word in self.spam_word_dict:
-                return np.log10(float(self.spam_word_dict[word]) / float(sum(self.spam_word_dict.itervalues()))) * count
+                return np.log10(float(self.spam_word_dict[word]) / float(self.total_spam_words)) * count
             else:
-                return np.log10(1 / float(sum(self.spam_word_dict.itervalues())))   ##laplace blending, when complete new word is found
+                Ns = len(self.spam_word_dict)
+                return np.log10(self.alpha / float(self.total_spam_words + (Ns * self.alpha)))   ##laplace blending, when complete new word is found
         else:
             if word in self.ham_word_dict:
-                return np.log10(float(self.ham_word_dict[word]) / float(sum(self.ham_word_dict.itervalues()))) * count
+                return np.log10(float(self.ham_word_dict[word]) / float(self.total_ham_words)) * count
             else:
-                return np.log10(1 / float(sum(self.ham_word_dict.itervalues())))    ##laplace blending, when complete new word is found
+                Nh = len(self.ham_word_dict)
+                return np.log10(self.alpha / float(self.total_ham_words + (Nh * self.alpha)))    ##laplace blending, when complete new word is found
 
     def conditional_prob(self, email, is_spam):
-        result = 0
+        result = 0.0
 
         for i in range(0,len(email), 2):
             item = email[i]
             count = int(email[i + 1])
 
             #Since conditional prob are in log, so we should add rather than multiply
-            result = result + self.conditional_word_prob(item, count, is_spam)
+            cond_prob = self.conditional_word_prob(item, count, is_spam)
+            if cond_prob is not None:
+                result += cond_prob
         return result
 
     def classify(self, email):
@@ -88,7 +98,7 @@ if __name__ == "__main__":
     optparser.add_option('-o', '--output', dest="output", help="output file")
 
     (options, args) = optparser.parse_args()
-    print options, args
+
     train_data = options.traindata
     test_data = options.testdata
     output = options.output
@@ -100,22 +110,51 @@ if __name__ == "__main__":
     wrong = 0
     # let us test!
     # to do- laplacian blending
+
+    test_result = list()
+    actual_spam_count = 0
+    actual_ham_count = 0
+    correct_pred_spam_count = 0
+    correct_pred_ham_count = 0
+    total_pred_spam_count = 0
+    total_pred_ham_count = 0
     for items in testfile:
         items = items.split(' ')
         email_id = items[0]
-        res = items[1]
+        actual_res = items[1]
         body = items[2:]
 
         prediction = bayes_classifier.classify(body)
-        test = ""
-        if prediction == False:
-            test = "ham"
+        pred_result = ""
+  
+        if actual_res == "ham":
+            actual_ham_count += 1
         else:
-            test = "spam"
-
-        if test == res:
+            actual_spam_count += 1
+        
+        if prediction == False:
+            pred_result = "ham"
+            total_pred_ham_count += 1
+        else:
+            pred_result = "spam"
+            total_pred_spam_count += 1
+            
+        
+        test_result.append((email_id, pred_result))
+        if pred_result == actual_res:
+            if pred_result == "spam":
+                correct_pred_spam_count += 1
+            else:
+                correct_pred_ham_count += 1
             correct+=1
         else:
             wrong +=1
 
-    print correct, wrong
+
+    with open(output+".csv", 'wb') as output_file:
+        wr = csv.writer(output_file, quoting=csv.QUOTE_ALL)
+        for result in test_result:
+            wr.writerow(result)
+    print "Accuracy: ", float(correct)/(correct+wrong) * 100, "%"
+    print "Precision: ", float(correct_pred_spam_count)/ total_pred_spam_count* 100, "%"
+    print "Recall: ", float(correct_pred_spam_count)/actual_spam_count * 100, "%"
